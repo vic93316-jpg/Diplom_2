@@ -1,75 +1,67 @@
+import clients.ApiClient;
 import io.qameta.allure.Description;
 import io.qameta.allure.junit4.DisplayName;
 import io.restassured.response.Response;
-import org.junit.After;
+import org.apache.http.HttpStatus;
 import org.junit.Test;
-import static io.restassured.RestAssured.given;
+
 import static org.hamcrest.Matchers.*;
 
-
-public class CreateUserTest extends BaseTest {
-
-    private String email;
-    private String accessToken;
+public class CreateUserTest {
 
     @Test
     @DisplayName("Создание уникального пользователя")
     @Description("Проверяет успешную регистрацию нового пользователя с уникальными данными")
     public void createUniqueUserTest() {
-        email = "test_" + System.currentTimeMillis() + "@yandex.ru";
-        String requestBody = String.format(
-                "{\"email\": \"%s\", \"password\": \"password123\", \"name\": \"TestUser\"}", email);
+        String email = "test_" + System.currentTimeMillis() + "@yandex.ru";
 
-        Response response = given()
-                .spec(getRequestSpec())
-                .body(requestBody)
-                .when()
-                .post("/api/auth/register");
+        Response response = ApiClient.registerUser(email, "password123", "TestUser");
 
-        response.then().statusCode(200)
-                .body("success", is(true))
-                .body("user.email", equalTo(email))
-                .body("accessToken", notNullValue());
-
-        accessToken = response.path("accessToken");
+        String accessToken = null;
+        try {
+            response.then()
+                    .statusCode(HttpStatus.SC_OK)
+                    .body("success", is(true))
+                    .body("user.email", equalTo(email))
+                    .body("accessToken", notNullValue());
+            accessToken = response.path("accessToken");
+        } finally {
+            if (accessToken != null) {
+                ApiClient.deleteUser(accessToken);
+            }
+        }
     }
 
     @Test
     @DisplayName("Создание уже зарегистрированного пользователя")
     @Description("Проверяет, что при попытке регистрации с существующим email возвращается ошибка 403")
     public void createExistingUserTest() {
-        String existingEmail = "existing_" + System.currentTimeMillis() + "@yandex.ru";
-        String requestBody = String.format(
-                "{\"email\": \"%s\", \"password\": \"password123\", \"name\": \"Existing\"}", existingEmail);
+        String email = "existing_" + System.currentTimeMillis() + "@yandex.ru";
 
+        String accessToken = ApiClient
+                .registerUser(email, "password123", "Existing")
+                .path("accessToken");
 
-        given().spec(getRequestSpec()).body(requestBody).when().post("/api/auth/register");
-
-
-        given()
-                .spec(getRequestSpec())
-                .body(requestBody)
-                .when()
-                .post("/api/auth/register")
-                .then()
-                .statusCode(403)
-                .body("success", is(false))
-                .body("message", equalTo("User already exists"));
+        try {
+            ApiClient.registerUser(email, "password123", "Existing")
+                    .then()
+                    .statusCode(HttpStatus.SC_FORBIDDEN)
+                    .body("success", is(false))
+                    .body("message", equalTo("User already exists"));
+        } finally {
+            if (accessToken != null) {
+                ApiClient.deleteUser(accessToken);
+            }
+        }
     }
 
     @Test
     @DisplayName("Создание пользователя без логина")
     @Description("Проверяет, что при отсутствии email (логина) возвращается ошибка 403")
     public void createUserWithoutLoginTest() {
-        String requestBody = "{\"password\": \"password123\", \"name\": \"NoLogin\"}";
-
-        given()
-                .spec(getRequestSpec())
-                .body(requestBody)
-                .when()
-                .post("/api/auth/register")
+        ApiClient.registerUser(null, "password123", "NoLogin")
                 .then()
-                .statusCode(403)
+                .statusCode(HttpStatus.SC_FORBIDDEN)
                 .body("success", is(false))
                 .body("message", containsString("required fields"));
     }
@@ -78,17 +70,11 @@ public class CreateUserTest extends BaseTest {
     @DisplayName("Создание пользователя без пароля")
     @Description("Проверяет, что при отсутствии password возвращается ошибка 403")
     public void createUserWithoutPasswordTest() {
-        String requestBody = String.format(
-                "{\"email\": \"nopass_%s@yandex.ru\", \"name\": \"NoPassword\"}",
-                System.currentTimeMillis());
+        String email = "nopass_" + System.currentTimeMillis() + "@yandex.ru";
 
-        given()
-                .spec(getRequestSpec())
-                .body(requestBody)
-                .when()
-                .post("/api/auth/register")
+        ApiClient.registerUser(email, null, "NoPassword")
                 .then()
-                .statusCode(403)
+                .statusCode(HttpStatus.SC_FORBIDDEN)
                 .body("success", is(false))
                 .body("message", containsString("required fields"));
     }
@@ -97,27 +83,12 @@ public class CreateUserTest extends BaseTest {
     @DisplayName("Создание пользователя без имени")
     @Description("Проверяет, что при отсутствии name (Username) возвращается ошибка 403")
     public void createUserWithoutNameTest() {
-        String requestBody = String.format(
-                "{\"email\": \"noname_%s@yandex.ru\", \"password\": \"password123\"}",
-                System.currentTimeMillis());
+        String email = "noname_" + System.currentTimeMillis() + "@yandex.ru";
 
-        given()
-                .spec(getRequestSpec())
-                .body(requestBody)
-                .when()
-                .post("/api/auth/register")
+        ApiClient.registerUser(email, "password123", null)
                 .then()
-                .statusCode(403)
+                .statusCode(HttpStatus.SC_FORBIDDEN)
                 .body("success", is(false))
                 .body("message", containsString("required fields"));
-    }
-
-    @After
-    public void tearDown() {
-        if (accessToken != null) {
-            given().spec(getRequestSpec())
-                    .header("Authorization", accessToken)
-                    .when().delete("/api/auth/user");
-        }
     }
 }

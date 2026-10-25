@@ -1,139 +1,127 @@
+import clients.ApiClient;
 import io.qameta.allure.Description;
 import io.qameta.allure.junit4.DisplayName;
-import io.restassured.response.Response;
-import org.junit.After;
-import org.junit.Before;
+import org.apache.http.HttpStatus;
 import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
-public class CreateOrderTest extends BaseTest {
+public class CreateOrderTest {
 
-    private String accessToken;
-    private List<String> validIngredients;
-    private Map<String, String> ingredientIdToName;
-    private final String invalidHash = "invalid_hash_123";
+    private static final String INVALID_HASH = "invalid_hash_123";
 
-    @Before
-    public void setUp() {
+    private static List<String> getValidIngredients() {
+        return ApiClient.getIngredients().path("data._id");
+    }
 
-        Response ingredientsResponse = given().spec(getRequestSpec()).when().get("/api/ingredients");
-        validIngredients = ingredientsResponse.path("data._id");
-
-
-        List<Map<String, String>> ingredientsData = ingredientsResponse.jsonPath().getList("data");
-        ingredientIdToName = new HashMap<>();
-        for (Map<String, String> ingredient : ingredientsData) {
-            ingredientIdToName.put(ingredient.get("_id"), ingredient.get("name"));
+    private static Map<String, String> getIngredientIdToName() {
+        List<Map<String, String>> data = ApiClient.getIngredients().jsonPath().getList("data");
+        Map<String, String> map = new HashMap<>();
+        for (Map<String, String> ingredient : data) {
+            map.put(ingredient.get("_id"), ingredient.get("name"));
         }
-
-
-        String email = "order_" + System.currentTimeMillis() + "@yandex.ru";
-        String regBody = String.format(
-                "{\"email\": \"%s\", \"password\": \"password123\", \"name\": \"OrderUser\"}", email);
-        Response regResponse = given().spec(getRequestSpec()).body(regBody).when().post("/api/auth/register");
-        accessToken = regResponse.path("accessToken");
+        return map;
     }
 
     @Test
     @DisplayName("Создание заказа с авторизацией")
     @Description("Проверяет успешное создание заказа авторизованным пользователем с валидными ингредиентами")
     public void createOrderWithAuthTest() {
-        String orderBody = String.format("{\"ingredients\": [\"%s\", \"%s\"]}",
-                validIngredients.get(0), validIngredients.get(1));
+        List<String> ingredients = getValidIngredients();
+        String email = "order_" + System.currentTimeMillis() + "@yandex.ru";
+        String accessToken = ApiClient.registerUser(email, "password123", "OrderUser").path("accessToken");
 
-        given()
-                .spec(getRequestSpec())
-                .header("Authorization", accessToken)
-                .body(orderBody)
-                .when()
-                .post("/api/orders")
-                .then()
-                .statusCode(200)
-                .body("success", is(true))
-                .body("order.number", notNullValue());
+        try {
+            ApiClient.createOrder(Arrays.asList(ingredients.get(0), ingredients.get(1)), accessToken)
+                    .then()
+                    .statusCode(HttpStatus.SC_OK)
+                    .body("success", is(true))
+                    .body("order.number", notNullValue());
+        } finally {
+            if (accessToken != null) {
+                ApiClient.deleteUser(accessToken);
+            }
+        }
     }
 
     @Test
     @DisplayName("Создание заказа без авторизации")
     @Description("Проверяет успешное создание заказа без передачи токена авторизации")
     public void createOrderWithoutAuthTest() {
-        String orderBody = String.format("{\"ingredients\": [\"%s\"]}", validIngredients.get(0));
+        List<String> ingredients = getValidIngredients();
 
-        given()
-                .spec(getRequestSpec())
-                .body(orderBody)
-                .when()
-                .post("/api/orders")
+        ApiClient.createOrder(Collections.singletonList(ingredients.get(0)), null)
                 .then()
-                .statusCode(200)
+                .statusCode(HttpStatus.SC_OK)
                 .body("success", is(true));
     }
 
     @Test
     @DisplayName("Создание заказа с ингредиентами")
-    @Description("Проверяет, что при передаче ингредиента он попадает в заказ (имя ингредиента присутствует в названии заказа)")
+    @Description("Проверяет, что при передаче ингредиента он попадает в заказ")
     public void createOrderWithIngredientsTest() {
-        String ingredientId = validIngredients.get(0);
-        String ingredientName = ingredientIdToName.get(ingredientId);
-        String orderBody = String.format("{\"ingredients\": [\"%s\"]}", ingredientId);
+        List<String> ingredients = getValidIngredients();
+        Map<String, String> idToName = getIngredientIdToName();
+        String ingredientId = ingredients.get(0);
+        String ingredientName = idToName.get(ingredientId);
 
-        given()
-                .spec(getRequestSpec())
-                .header("Authorization", accessToken)
-                .body(orderBody)
-                .when()
-                .post("/api/orders")
-                .then()
-                .statusCode(200)
-                .body("success", is(true))
-                .body("order.ingredients[0].name", containsString(ingredientName));
+        String email = "order_" + System.currentTimeMillis() + "@yandex.ru";
+        String accessToken = ApiClient.registerUser(email, "password123", "OrderUser").path("accessToken");
+
+        try {
+            ApiClient.createOrder(Collections.singletonList(ingredientId), accessToken)
+                    .then()
+                    .statusCode(HttpStatus.SC_OK)
+                    .body("success", is(true))
+                    .body("order.ingredients[0].name", containsString(ingredientName));
+        } finally {
+            if (accessToken != null) {
+                ApiClient.deleteUser(accessToken);
+            }
+        }
     }
 
     @Test
     @DisplayName("Создание заказа без ингредиентов")
     @Description("Проверяет, что при пустом списке ингредиентов возвращается ошибка 400")
     public void createOrderWithoutIngredientsTest() {
-        String orderBody = "{\"ingredients\": []}";
+        String email = "order_" + System.currentTimeMillis() + "@yandex.ru";
+        String accessToken = ApiClient.registerUser(email, "password123", "OrderUser").path("accessToken");
 
-        given()
-                .spec(getRequestSpec())
-                .header("Authorization", accessToken)
-                .body(orderBody)
-                .when()
-                .post("/api/orders")
-                .then()
-                .statusCode(400)
-                .body("success", is(false))
-                .body("message", equalTo("Ingredient ids must be provided"));
+        try {
+            ApiClient.createOrder(Collections.emptyList(), accessToken)
+                    .then()
+                    .statusCode(HttpStatus.SC_BAD_REQUEST)
+                    .body("success", is(false))
+                    .body("message", equalTo("Ingredient ids must be provided"));
+        } finally {
+            if (accessToken != null) {
+                ApiClient.deleteUser(accessToken);
+            }
+        }
     }
 
     @Test
     @DisplayName("Создание заказа с неверным хешем ингредиентов")
     @Description("Проверяет, что при передаче невалидного хеша ингредиента возвращается ошибка 500")
     public void createOrderWithInvalidIngredientHashTest() {
-        String orderBody = String.format("{\"ingredients\": [\"%s\"]}", invalidHash);
+        String email = "order_" + System.currentTimeMillis() + "@yandex.ru";
+        String accessToken = ApiClient.registerUser(email, "password123", "OrderUser").path("accessToken");
 
-        given()
-                .spec(getRequestSpec())
-                .header("Authorization", accessToken)
-                .body(orderBody)
-                .when()
-                .post("/api/orders")
-                .then()
-                .statusCode(500);
-    }
-
-    @After
-    public void tearDown() {
-        if (accessToken != null) {
-            given().spec(getRequestSpec())
-                    .header("Authorization", accessToken)
-                    .when().delete("/api/auth/user");
+        try {
+            ApiClient.createOrder(Collections.singletonList(INVALID_HASH), accessToken)
+                    .then()
+                    .statusCode(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+        } finally {
+            if (accessToken != null) {
+                ApiClient.deleteUser(accessToken);
+            }
         }
     }
 }
