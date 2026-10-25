@@ -1,0 +1,7 @@
+clients\ApiClient$UserLogin.class
+CreateOrderTest.class
+clients\ApiClient$UserRegistration.class
+CreateUserTest.class
+clients\ApiClient$Order.class
+clients\ApiClient.class
+LoginUserTest.class
