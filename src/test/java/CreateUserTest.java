@@ -79,6 +79,7 @@ public class CreateUserTest {
                 .body("message", containsString("required fields"));
     }
 
+
     @Test
     @DisplayName("Создание пользователя без имени")
     @Description("Проверяет, что при отсутствии name (Username) возвращается ошибка 403")

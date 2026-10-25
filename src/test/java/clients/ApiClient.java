@@ -1,7 +1,7 @@
 package clients;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.google.gson.annotations.SerializedName;
+import io.qameta.allure.Step;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.config.ObjectMapperConfig;
@@ -14,13 +14,11 @@ import io.restassured.specification.RequestSpecification;
 
 import java.util.List;
 
-
 public class ApiClient {
 
     private static final String BASE_URL = "https://qa-stellarburgers.education-services.ru/";
 
     static {
-
         RestAssured.config = RestAssuredConfig.config()
                 .objectMapperConfig(ObjectMapperConfig.objectMapperConfig()
                         .defaultObjectMapperType(ObjectMapperType.GSON));
@@ -36,12 +34,41 @@ public class ApiClient {
 
 
 
-    public static Response registerUser(String email, String password, String name) {
-        JsonObject body = new JsonObject();
-        if (email != null) body.addProperty("email", email);
-        if (password != null) body.addProperty("password", password);
-        if (name != null) body.addProperty("name", name);
+    public static class UserRegistration {
+        @SerializedName("email")    private final String email;
+        @SerializedName("password") private final String password;
+        @SerializedName("name")     private final String name;
 
+        public UserRegistration(String email, String password, String name) {
+            this.email = email;
+            this.password = password;
+            this.name = name;
+        }
+    }
+
+    public static class UserLogin {
+        @SerializedName("email")    private final String email;
+        @SerializedName("password") private final String password;
+
+        public UserLogin(String email, String password) {
+            this.email = email;
+            this.password = password;
+        }
+    }
+
+    public static class Order {
+        @SerializedName("ingredients") private final List<String> ingredients;
+
+        public Order(List<String> ingredients) {
+            this.ingredients = ingredients;
+        }
+    }
+
+
+
+    @Step("Регистрация пользователя: email = {email}, name = {name}")
+    public static Response registerUser(String email, String password, String name) {
+        UserRegistration body = new UserRegistration(email, password, name);
         return RestAssured.given()
                 .spec(spec())
                 .body(body)
@@ -49,11 +76,9 @@ public class ApiClient {
                 .post("/api/auth/register");
     }
 
+    @Step("Авторизация пользователя: email = {email}")
     public static Response loginUser(String email, String password) {
-        JsonObject body = new JsonObject();
-        body.addProperty("email", email);
-        body.addProperty("password", password);
-
+        UserLogin body = new UserLogin(email, password);
         return RestAssured.given()
                 .spec(spec())
                 .body(body)
@@ -61,6 +86,7 @@ public class ApiClient {
                 .post("/api/auth/login");
     }
 
+    @Step("Удаление пользователя")
     public static Response deleteUser(String accessToken) {
         return RestAssured.given()
                 .spec(spec())
@@ -69,8 +95,7 @@ public class ApiClient {
                 .delete("/api/auth/user");
     }
 
-
-
+    @Step("Получение списка ингредиентов")
     public static Response getIngredients() {
         return RestAssured.given()
                 .spec(spec())
@@ -78,16 +103,9 @@ public class ApiClient {
                 .get("/api/ingredients");
     }
 
-
-
+    @Step("Создание заказа с ингредиентами: {ingredients}")
     public static Response createOrder(List<String> ingredients, String accessToken) {
-        JsonArray array = new JsonArray();
-        for (String id : ingredients) {
-            array.add(id);
-        }
-        JsonObject body = new JsonObject();
-        body.add("ingredients", array);
-
+        Order body = new Order(ingredients);
         RequestSpecification request = RestAssured.given()
                 .spec(spec())
                 .body(body);
