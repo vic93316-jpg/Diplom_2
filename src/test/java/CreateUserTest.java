@@ -6,6 +6,7 @@ import org.junit.Test;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
 
+
 public class CreateUserTest extends BaseTest {
 
     private String email;
