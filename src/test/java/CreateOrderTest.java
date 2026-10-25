@@ -92,7 +92,7 @@ public class CreateOrderTest extends BaseTest {
                 .then()
                 .statusCode(200)
                 .body("success", is(true))
-                .body("order.name", containsString(ingredientName));
+                .body("order.ingredients[0].name", containsString(ingredientName));
     }
 
     @Test
